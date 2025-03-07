@@ -1,0 +1,24 @@
+{
+  "ip_addresses": {
+    "192.168.1.1": {
+      "hostnames": ["router.local", "gateway.example.com"],
+      "tcp_ports": [22, 80, 443]
+    },
+    "10.0.0.1": {
+      "hostnames": ["firewall.example.com"],
+      "tcp_ports": [22, 8080, 8443]
+    },
+    "172.16.0.10": {
+      "hostnames": ["webserver.internal", "www.example.com"],
+      "tcp_ports": [80, 443, 3000, 3306]
+    },
+    "192.168.2.5": {
+      "hostnames": ["database.example.com"],
+      "tcp_ports": [1433, 3306, 5432, 27017]
+    },
+    "10.1.1.100": {
+      "hostnames": ["api.example.com"],
+      "tcp_ports": [80, 443, 8000, 8443]
+    }
+  }
+}

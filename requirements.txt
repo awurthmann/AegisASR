@@ -1,0 +1,28 @@
+# Core dependencies
+python-dotenv>=0.19.0
+typing-extensions>=4.0.0
+
+# AWS dependencies
+boto3>=1.20.0
+botocore>=1.23.0
+
+# Azure dependencies
+azure-identity>=1.7.0
+azure-mgmt-resource>=21.0.0
+azure-mgmt-storage>=19.0.0
+azure-mgmt-synapse>=2.0.0
+azure-storage-blob>=12.9.0
+azure-mgmt-web>=2.0.0
+azure-synapse-spark>=0.5.0
+azure-synapse-artifacts>=0.6.0
+azure-core>=1.20.0
+
+# GCP dependencies
+google-cloud-storage>=2.0.0
+google-cloud-bigquery>=2.30.0
+google-cloud-functions>=1.0.0
+google-auth>=2.3.0
+
+# Utility dependencies
+requests>=2.26.0
+dnspython>=2.1.0
