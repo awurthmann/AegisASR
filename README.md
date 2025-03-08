@@ -150,7 +150,7 @@ This tool is designed for security professionals to scan systems they own or hav
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Creative Commons BY-NC 4.0 (Non-Commercial License) - see the LICENSE file for details.
 
 ## Contributing
 
