@@ -2,7 +2,7 @@
 
 # ⚠️ Experimental Project: Use with Caution ⚠️
 
-🚀 **An experimental, modular, open-source attack surface reduction platform** written in Python.  
+🚀 **An experimental, modular, open-source attack surface reconnaissance platform** written in Python.  
 This project enables users to scan network assets across multiple cloud environments using **serverless computing** and **defensive programming** principles. It performs **distributed port scanning** with built-in **rate limiting and security considerations** to minimize disruption.  
 
 ⚠️ **This project is actively evolving and should be used for research, testing, and educational purposes only.** Expect changes, or no changes, improvements, or no improvments, and potential issues as development progresses or doesn't progress.

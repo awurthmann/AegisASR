@@ -1,6 +1,6 @@
 # AegisASR - Architecture
 
-This document provides a detailed overview of the AegisASR architecture, explaining how the different components work together to provide a scalable, multi-cloud port scanning solution.
+This document provides a detailed overview of the AegisASR (Attack Surface Reconnaissance) architecture, explaining how the different components work together to provide a scalable, multi-cloud port scanning solution for attack surface reconnaissance.
 
 ## System Overview
 

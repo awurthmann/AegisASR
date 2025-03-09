@@ -2,7 +2,7 @@
 """
 AegisASR
 
-A modular open-source platform for scanning network assets across multiple cloud environments.
+A modular open-source attack surface reconnaissance platform for scanning network assets across multiple cloud environments.
 This tool allows users to scan network assets for open TCP ports with appropriate rate limiting
 and security considerations.
 
