@@ -92,6 +92,49 @@ python main.py --input targets.json --cloud aws
 
 The platform can also import DNS zone files and automatically extract relevant records (A, AAAA, CNAME, PTR, MX, SRV).
 
+### How It Works
+
+AegisASR follows a structured workflow to perform distributed port scanning:
+
+1. **Input Processing**: The user provides input data (JSON or DNS zone file), which is validated and processed.
+2. **Cloud Selection**: The user selects one or more cloud platforms for scanning (AWS, Azure, GCP, or all).
+3. **Resource Deployment**: The system deploys serverless functions to the selected cloud platforms.
+4. **Job Preparation**: Scan jobs are prepared with appropriate rate limiting and randomization.
+5. **Distributed Execution**: Scan jobs are executed in parallel across serverless functions.
+6. **Result Collection**: Results are collected from all cloud platforms.
+7. **Data Storage**: Results are stored in the selected cloud database:
+   - AWS: S3 + Athena
+   - Azure: Data Lake + Synapse SQL
+   - GCP: BigQuery
+8. **Resource Cleanup**: Resources are cleaned up (except for storage resources containing results).
+
+### Usage Examples
+
+**Scan targets using AWS:**
+```bash
+python main.py --input targets.json --cloud aws
+```
+
+**Scan targets using Azure with specific ports for DNS input:**
+```bash
+python main.py --input example.zone --cloud azure --ports 22,80,443,3389
+```
+
+**Scan targets using multiple cloud platforms:**
+```bash
+python main.py --input targets.json --cloud all
+```
+
+**Perform a dry run without executing scans:**
+```bash
+python main.py --input targets.json --cloud aws --dry-run --verbose
+```
+
+**Output results to a specific directory:**
+```bash
+python main.py --input targets.json --cloud gcp --output /path/to/results
+```
+
 ## Configuration
 
 ### Environment Variables
