@@ -382,12 +382,119 @@ azure-functions
 """
         
         try:
-            # TODO: Deploy function code
-            # This would typically involve creating a zip package and deploying it
-            # For simplicity, we'll assume the function is deployed
+            import tempfile
+            import zipfile
+            import os
+            import requests
             
-            logger.debug("Azure Function deployed successfully")
-            return True
+            # Create a temporary directory for the function code
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Create function directory structure
+                function_dir = os.path.join(temp_dir, "PortScanFunction")
+                os.makedirs(function_dir, exist_ok=True)
+                
+                # Write function files
+                with open(os.path.join(function_dir, "__init__.py"), "w") as f:
+                    f.write(function_code)
+                
+                with open(os.path.join(function_dir, "function.json"), "w") as f:
+                    f.write(function_json)
+                
+                with open(os.path.join(temp_dir, "host.json"), "w") as f:
+                    f.write(host_json)
+                
+                with open(os.path.join(temp_dir, "requirements.txt"), "w") as f:
+                    f.write(requirements_txt)
+                
+                # Create zip file
+                zip_path = os.path.join(temp_dir, "function.zip")
+                with zipfile.ZipFile(zip_path, "w") as zip_file:
+                    # Add all files in the temp directory to the zip
+                    for root, _, files in os.walk(temp_dir):
+                        for file in files:
+                            if file != "function.zip":  # Skip the zip file itself
+                                file_path = os.path.join(root, file)
+                                arcname = os.path.relpath(file_path, temp_dir)
+                                zip_file.write(file_path, arcname)
+                
+                # Get function app publish profile
+                publish_profile_response = self.web_client.web_apps.list_publishing_profile_xml_with_secrets(
+                    resource_group_name=self.resource_group_name,
+                    name=self.function_app_name
+                )
+                
+                # Extract credentials from publish profile
+                import xml.etree.ElementTree as ET
+                from io import StringIO
+                
+                publish_profile = publish_profile_response.text
+                root = ET.fromstring(publish_profile)
+                
+                # Find the FTP publishing profile
+                publish_url = None
+                username = None
+                password = None
+                
+                for profile in root.findall(".//publishProfile[@publishMethod='MSDeploy']"):
+                    publish_url = profile.get("publishUrl")
+                    username = profile.get("userName")
+                    password = profile.get("userPWD")
+                    break
+                
+                if not publish_url or not username or not password:
+                    logger.error("Failed to extract publishing credentials")
+                    return False
+                
+                # Deploy the zip package
+                import base64
+                
+                # Construct the deployment URL
+                deploy_url = f"https://{publish_url}/api/zipdeploy"
+                
+                # Create basic auth header
+                auth = f"{username}:{password}"
+                auth_bytes = auth.encode("ascii")
+                base64_auth = base64.b64encode(auth_bytes).decode("ascii")
+                
+                # Upload the zip file
+                with open(zip_path, "rb") as zip_file:
+                    response = requests.post(
+                        deploy_url,
+                        headers={
+                            "Authorization": f"Basic {base64_auth}",
+                            "Content-Type": "application/zip"
+                        },
+                        data=zip_file.read()
+                    )
+                
+                if response.status_code >= 200 and response.status_code < 300:
+                    logger.debug("Azure Function deployed successfully")
+                    
+                    # Store the function URL for later use
+                    self.function_url = f"https://{self.function_app_name}.azurewebsites.net/api/PortScanFunction"
+                    
+                    # Get function key
+                    keys_response = self.web_client.web_apps.list_function_keys(
+                        resource_group_name=self.resource_group_name,
+                        name=self.function_app_name,
+                        function_name="PortScanFunction"
+                    )
+                    
+                    if keys_response and hasattr(keys_response, "default"):
+                        self.function_key = keys_response.default
+                    else:
+                        # If we can't get the function key, we'll use the master key
+                        master_key_response = self.web_client.web_apps.list_host_keys(
+                            resource_group_name=self.resource_group_name,
+                            name=self.function_app_name
+                        )
+                        if master_key_response and hasattr(master_key_response, "master_key"):
+                            self.function_key = master_key_response.master_key
+                    
+                    return True
+                else:
+                    logger.error(f"Failed to deploy Azure Function: {response.status_code} {response.text}")
+                    return False
         
         except Exception as e:
             logger.error(f"Failed to deploy Azure Function: {e}")
@@ -406,6 +513,57 @@ azure-functions
         """
         logger.debug(f"Executing {len(scan_jobs)} scan jobs on Azure Functions")
         
+        # Check if function URL and key are available
+        if not hasattr(self, 'function_url') or not self.function_url:
+            logger.error("Function URL is not available. Make sure the function is deployed.")
+            return []
+        
+        # Import requests here to avoid dependency issues
+        import requests
+        import concurrent.futures
+        from urllib.parse import urlencode
+        
+        # Function to execute a single scan job
+        def execute_job(job):
+            try:
+                # Prepare request URL with function key if available
+                url = self.function_url
+                if hasattr(self, 'function_key') and self.function_key:
+                    url = f"{url}?code={self.function_key}"
+                
+                # Send request to Azure Function
+                response = requests.post(
+                    url,
+                    json={"scan_job": job},
+                    headers={"Content-Type": "application/json"},
+                    timeout=10  # 10 second timeout
+                )
+                
+                # Check response
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"Function returned error: {response.status_code} {response.text}")
+                    return {
+                        "ip": job["ip"],
+                        "port": job["port"],
+                        "is_open": False,
+                        "hostnames": job["hostnames"],
+                        "timestamp": time.time(),
+                        "error": f"Function error: {response.status_code}"
+                    }
+            
+            except Exception as e:
+                logger.error(f"Error executing job: {e}")
+                return {
+                    "ip": job["ip"],
+                    "port": job["port"],
+                    "is_open": False,
+                    "hostnames": job["hostnames"],
+                    "timestamp": time.time(),
+                    "error": str(e)
+                }
+        
         # Split scan jobs into batches
         batches = []
         for i in range(0, len(scan_jobs), concurrency_limit):
@@ -416,21 +574,28 @@ azure-functions
         for i, batch in enumerate(batches):
             logger.debug(f"Executing batch {i+1}/{len(batches)} ({len(batch)} jobs)")
             
-            # TODO: Invoke Azure Functions
-            # For simplicity, we'll simulate the execution
-            
-            # Simulate batch execution
+            # Execute batch in parallel using ThreadPoolExecutor
             batch_results = []
-            for job in batch:
-                # Simulate function execution
-                result = {
-                    "ip": job["ip"],
-                    "port": job["port"],
-                    "is_open": False,  # Simulated result
-                    "hostnames": job["hostnames"],
-                    "timestamp": time.time()
-                }
-                batch_results.append(result)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency_limit) as executor:
+                # Submit all jobs
+                future_to_job = {executor.submit(execute_job, job): job for job in batch}
+                
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(future_to_job):
+                    job = future_to_job[future]
+                    try:
+                        result = future.result()
+                        batch_results.append(result)
+                    except Exception as e:
+                        logger.error(f"Job execution failed: {e}")
+                        batch_results.append({
+                            "ip": job["ip"],
+                            "port": job["port"],
+                            "is_open": False,
+                            "hostnames": job["hostnames"],
+                            "timestamp": time.time(),
+                            "error": str(e)
+                        })
             
             # Add batch results to overall results
             results.extend(batch_results)

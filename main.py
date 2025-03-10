@@ -146,9 +146,81 @@ def main() -> int:
             logger.info("Dry run completed. No scans were executed.")
             return 0
         
-        # Execute scans (implementation will be added in cloud modules)
+        # Execute scans using the selected cloud platform(s)
         logger.info("Executing scans...")
-        # This will be implemented in the cloud modules
+        
+        from src.cloud.common import get_cloud_handler, select_storage_platform
+        
+        # Initialize handlers for selected platforms
+        handlers = {}
+        for platform in selected_platforms:
+            handler = get_cloud_handler(platform)
+            if handler and handler.initialize(config):
+                handlers[platform] = handler
+                logger.info(f"Initialized {platform.upper()} handler")
+            else:
+                logger.error(f"Failed to initialize {platform.upper()} handler")
+                return 1
+        
+        if not handlers:
+            logger.error("No cloud handlers were initialized")
+            return 1
+        
+        # If multiple platforms are selected, ask user which one to use for storage
+        storage_platform = None
+        if len(handlers) > 1:
+            logger.info("Multiple cloud platforms selected, choosing one for result storage")
+            storage_platform = select_storage_platform(list(handlers.keys()))
+            if not storage_platform:
+                logger.error("No storage platform selected")
+                return 1
+            logger.info(f"Selected {storage_platform.upper()} for result storage")
+        else:
+            # If only one platform, use it for storage
+            storage_platform = list(handlers.keys())[0]
+        
+        # Create cloud resources
+        for platform, handler in handlers.items():
+            if platform == "aws":
+                handler.create_lambda_function()
+                if platform == storage_platform:
+                    handler.create_s3_bucket()
+                    handler.create_athena_database()
+            elif platform == "azure":
+                handler.create_resource_group()
+                handler.create_storage_account()
+                handler.create_function_app()
+                if platform == storage_platform:
+                    handler.create_synapse_workspace()
+            elif platform == "gcp":
+                handler.create_storage_bucket()
+                if platform == storage_platform:
+                    handler.create_bigquery_dataset()
+            
+            # Deploy function
+            handler.deploy_function()
+        
+        # Execute scan jobs on each platform
+        all_results = []
+        for platform, handler in handlers.items():
+            logger.info(f"Executing scan jobs on {platform.upper()}")
+            results = handler.execute_scan_jobs(scan_jobs, concurrency_limit)
+            all_results.extend(results)
+        
+        # Store results in the selected platform
+        storage_handler = handlers[storage_platform]
+        if storage_handler.store_results(all_results):
+            logger.info(f"Results stored successfully in {storage_platform.upper()}")
+        else:
+            logger.error(f"Failed to store results in {storage_platform.upper()}")
+            return 1
+        
+        # Clean up resources (except storage)
+        for platform, handler in handlers.items():
+            if handler.cleanup():
+                logger.info(f"Cleaned up {platform.upper()} resources")
+            else:
+                logger.warning(f"Failed to clean up some {platform.upper()} resources")
         
         logger.info("Scan completed successfully.")
         return 0

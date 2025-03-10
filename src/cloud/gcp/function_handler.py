@@ -242,13 +242,57 @@ functions-framework==3.0.0
 """
         
         try:
-            # TODO: Deploy function code
-            # This would typically involve creating a zip package and deploying it
-            # For simplicity, we'll assume the function is deployed
+            import tempfile
+            import os
+            import zipfile
             
-            logger.debug("Google Cloud Function deployed successfully")
-            return True
-        
+            # Create a temporary directory for the function code
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Write function files
+                with open(os.path.join(temp_dir, "main.py"), "w") as f:
+                    f.write(function_code)
+                
+                with open(os.path.join(temp_dir, "requirements.txt"), "w") as f:
+                    f.write(requirements_txt)
+                
+                # Create zip file
+                zip_path = os.path.join(temp_dir, "function.zip")
+                with zipfile.ZipFile(zip_path, "w") as zip_file:
+                    for file in ["main.py", "requirements.txt"]:
+                        file_path = os.path.join(temp_dir, file)
+                        zip_file.write(file_path, file)
+                
+                # Upload zip to storage bucket
+                blob = self.storage_client.bucket(self.bucket_name).blob("function.zip")
+                blob.upload_from_filename(zip_path)
+                
+                # Get the function parent
+                parent = f"projects/{self.project_id}/locations/{self.region}"
+                
+                # Create function
+                function = {
+                    "name": f"{parent}/functions/{self.function_name}",
+                    "description": "Port scanning function",
+                    "entry_point": "scan_port",
+                    "runtime": "python39",
+                    "https_trigger": {},
+                    "source_archive_url": f"gs://{self.bucket_name}/function.zip"
+                }
+                
+                # Create the function
+                operation = self.functions_client.create_function(
+                    request={"location": parent, "function": function}
+                )
+                
+                # Wait for the operation to complete
+                result = operation.result()
+                
+                # Store the function URL for later use
+                self.function_url = result.https_trigger.url
+                
+                logger.debug(f"Google Cloud Function deployed successfully: {self.function_url}")
+                return True
+            
         except Exception as e:
             logger.error(f"Failed to deploy Google Cloud Function: {e}")
             return False
@@ -266,6 +310,51 @@ functions-framework==3.0.0
         """
         logger.debug(f"Executing {len(scan_jobs)} scan jobs on Google Cloud Functions")
         
+        # Check if function URL is available
+        if not hasattr(self, 'function_url') or not self.function_url:
+            logger.error("Function URL is not available. Make sure the function is deployed.")
+            return []
+        
+        # Import requests here to avoid dependency issues
+        import requests
+        import concurrent.futures
+        
+        # Function to execute a single scan job
+        def execute_job(job):
+            try:
+                # Send request to Google Cloud Function
+                response = requests.post(
+                    self.function_url,
+                    json={"scan_job": job},
+                    headers={"Content-Type": "application/json"},
+                    timeout=10  # 10 second timeout
+                )
+                
+                # Check response
+                if response.status_code == 200:
+                    return json.loads(response.text)
+                else:
+                    logger.error(f"Function returned error: {response.status_code} {response.text}")
+                    return {
+                        "ip": job["ip"],
+                        "port": job["port"],
+                        "is_open": False,
+                        "hostnames": job["hostnames"],
+                        "timestamp": time.time(),
+                        "error": f"Function error: {response.status_code}"
+                    }
+            
+            except Exception as e:
+                logger.error(f"Error executing job: {e}")
+                return {
+                    "ip": job["ip"],
+                    "port": job["port"],
+                    "is_open": False,
+                    "hostnames": job["hostnames"],
+                    "timestamp": time.time(),
+                    "error": str(e)
+                }
+        
         # Split scan jobs into batches
         batches = []
         for i in range(0, len(scan_jobs), concurrency_limit):
@@ -276,21 +365,28 @@ functions-framework==3.0.0
         for i, batch in enumerate(batches):
             logger.debug(f"Executing batch {i+1}/{len(batches)} ({len(batch)} jobs)")
             
-            # TODO: Invoke Google Cloud Functions
-            # For simplicity, we'll simulate the execution
-            
-            # Simulate batch execution
+            # Execute batch in parallel using ThreadPoolExecutor
             batch_results = []
-            for job in batch:
-                # Simulate function execution
-                result = {
-                    "ip": job["ip"],
-                    "port": job["port"],
-                    "is_open": False,  # Simulated result
-                    "hostnames": job["hostnames"],
-                    "timestamp": time.time()
-                }
-                batch_results.append(result)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency_limit) as executor:
+                # Submit all jobs
+                future_to_job = {executor.submit(execute_job, job): job for job in batch}
+                
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(future_to_job):
+                    job = future_to_job[future]
+                    try:
+                        result = future.result()
+                        batch_results.append(result)
+                    except Exception as e:
+                        logger.error(f"Job execution failed: {e}")
+                        batch_results.append({
+                            "ip": job["ip"],
+                            "port": job["port"],
+                            "is_open": False,
+                            "hostnames": job["hostnames"],
+                            "timestamp": time.time(),
+                            "error": str(e)
+                        })
             
             # Add batch results to overall results
             results.extend(batch_results)
