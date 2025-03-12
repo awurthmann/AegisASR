@@ -15,6 +15,7 @@ This project enables users to scan network assets across multiple cloud environm
 - **Security-Focused**: Built with defensive programming practices and security in mind
 - **Flexible Input**: Support for JSON files and DNS zone files
 - **Cloud Storage**: Store results in cloud-native databases for analysis
+- **IP Intelligence**: Enrich scan results with organization information using MaxMind GeoLite2-ASN database, WHOIS lookups, or ipinfo.io API
 
 ## Installation
 
@@ -66,6 +67,9 @@ python main.py --input targets.json --cloud aws
 - `--output`, `-o`: Path to output directory for results
 - `--cloud`, `-c`: Cloud platform(s) to use for scanning (aws, azure, gcp, or all)
 - `--ports`, `-p`: Comma-separated list of TCP ports to scan (for DNS input only)
+- `--maxmind-db`, `-m`: Path to MaxMind GeoLite2-ASN database (overrides config file)
+- `--ipinfo-token`, `-t`: Token for ipinfo.io API (overrides config file)
+- `--no-ip-intel`: Disable IP intelligence enrichment
 - `--verbose`, `-v`: Enable verbose logging
 - `--dry-run`, `-d`: Perform a dry run without executing scans
 
@@ -135,6 +139,21 @@ python main.py --input targets.json --cloud aws --dry-run --verbose
 python main.py --input targets.json --cloud gcp --output /path/to/results
 ```
 
+**Use MaxMind GeoLite2-ASN database for IP intelligence:**
+```bash
+python main.py --input targets.json --cloud aws --maxmind-db /path/to/GeoLite2-ASN.mmdb
+```
+
+**Use ipinfo.io API for IP intelligence:**
+```bash
+python main.py --input targets.json --cloud azure --ipinfo-token your-ipinfo-token
+```
+
+**Disable IP intelligence enrichment:**
+```bash
+python main.py --input targets.json --cloud aws --no-ip-intel
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -163,6 +182,26 @@ Required environment variables:
 Required environment variables:
 - `GCP_PROJECT_ID`
 - `GCP_CREDENTIALS_FILE` (path to service account JSON file)
+
+### IP Intelligence Configuration
+
+The IP intelligence module enriches scan results with organization information for each IP address. It uses a tiered approach:
+
+1. **MaxMind GeoLite2-ASN Database** (primary source)
+   - Download from: https://dev.maxmind.com/geoip/geoip2/geolite2/ (requires free account)
+   - Set the path in your `.env` file: `MAXMIND_DB_PATH=/path/to/GeoLite2-ASN.mmdb`
+   - Or use the command line option: `--maxmind-db /path/to/GeoLite2-ASN.mmdb`
+
+2. **WHOIS Lookups** (fallback for small batches < 1000 IPs)
+   - Used automatically when MaxMind database is not available
+   - No configuration required
+
+3. **ipinfo.io API** (fallback for medium batches 1,000-10,000 IPs)
+   - Register for a free account at: https://ipinfo.io/
+   - Set your token in the `.env` file: `IPINFO_TOKEN=your-token-here`
+   - Or use the command line option: `--ipinfo-token your-token-here`
+
+You can disable IP intelligence enrichment with the `--no-ip-intel` command line option.
 
 ## Architecture
 

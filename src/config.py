@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 AWS_REQUIRED_KEYS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
 AZURE_REQUIRED_KEYS = ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"]
 GCP_REQUIRED_KEYS = ["GCP_PROJECT_ID", "GCP_CREDENTIALS_FILE"]
+IP_INTEL_KEYS = ["MAXMIND_DB_PATH", "IPINFO_TOKEN"]
 
 # Default configuration values
 DEFAULT_CONFIG = {
@@ -31,6 +32,8 @@ DEFAULT_CONFIG = {
     "MAX_CONCURRENCY": "1000",  # Default maximum concurrency
     "RANDOM_DELAY_MIN": "49",  # Minimum delay in milliseconds
     "RANDOM_DELAY_MAX": "199",  # Maximum delay in milliseconds
+    "MAXMIND_DB_PATH": "",  # Path to MaxMind GeoLite2-ASN database
+    "IPINFO_TOKEN": "",  # Token for ipinfo.io API
 }
 
 
@@ -147,3 +150,17 @@ def get_gcp_config(config: Dict[str, str]) -> Optional[Dict[str, str]]:
     if all(key in config for key in GCP_REQUIRED_KEYS):
         return {key: config[key] for key in GCP_REQUIRED_KEYS}
     return None
+
+
+def get_ip_intel_config(config: Dict[str, str]) -> Dict[str, str]:
+    """
+    Get IP intelligence configuration.
+    
+    Args:
+        config (Dict[str, str]): Configuration dictionary
+        
+    Returns:
+        Dict[str, str]: IP intelligence configuration
+    """
+    # Return IP intelligence configuration
+    return {key: config.get(key, "") for key in IP_INTEL_KEYS}

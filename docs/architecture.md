@@ -8,8 +8,14 @@ The AegisASR platform is designed with modularity and cloud-agnosticism in mind.
 
 ```
 ┌─────────────┐     ┌───────────────┐     ┌───────────────────┐
-│ Input Files │────▶│ Input Module  │────▶│ Cloud Module      │
-└─────────────┘     └───────────────┘     │                   │
+│ Input Files │────▶│ Input Module  │────▶│ IP Intelligence   │
+└─────────────┘     └───────────────┘     │ Module            │
+                                          └─────────┬─────────┘
+                                                    │
+                                                    ▼
+                                          ┌───────────────────┐
+                                          │ Cloud Module      │
+                                          │                   │
                                           │  ┌─────────────┐  │
                                           │  │ AWS Lambda  │  │
                                           │  └─────────────┘  │
@@ -26,7 +32,7 @@ The AegisASR platform is designed with modularity and cloud-agnosticism in mind.
                                                   ▼
 ┌─────────────┐     ┌───────────────┐     ┌───────────────────┐
 │ Query       │◀────│ Database      │◀────│ Scan Results      │
-│ Interface   │     │ Module        │     │                   │
+│ Interface   │     │ Module        │     │ with Organization │
 └─────────────┘     └───────────────┘     └───────────────────┘
 ```
 
@@ -41,7 +47,17 @@ The Input Module is responsible for importing and validating data from two sourc
 
 The module performs validation to ensure the input data meets the required format and contains valid IP addresses and port numbers.
 
-### 2. Cloud Modules
+### 2. IP Intelligence Module
+
+The IP Intelligence Module enriches scan targets with organization information for each IP address. It uses a tiered approach to determine the organization that owns each IP address:
+
+- **MaxMind GeoLite2-ASN Database**: The primary source for organization information. This database provides Autonomous System (AS) information for IP addresses, including the organization name.
+- **WHOIS Lookups**: Used as a fallback for small batches (< 1000 IPs) when the MaxMind database is not available. This method performs direct WHOIS lookups using the ipwhois library.
+- **ipinfo.io API**: Used as a fallback for medium batches (1,000-10,000 IPs) when the MaxMind database is not available. This method uses the ipinfo.io API to get organization information.
+
+The module adds organization information to the scan targets before they are passed to the Cloud Modules, and also formats the scan results to include organization information before they are stored in the database.
+
+### 3. Cloud Modules
 
 The Cloud Modules handle the deployment and execution of scan jobs across different cloud platforms:
 
@@ -56,7 +72,7 @@ Each cloud module is responsible for:
 - Executing scan jobs
 - Collecting and processing results
 
-### 3. Scan Modules
+### 4. Scan Modules
 
 The Scan Modules handle the core TCP port scanning functionality:
 
@@ -69,7 +85,7 @@ The scan modules implement several safety measures:
 - Variable timing between requests (randomized intervals)
 - Distribution of requests over time
 
-### 4. Database Modules
+### 5. Database Modules
 
 The Database Modules handle the storage and querying of scan results:
 
@@ -86,11 +102,13 @@ Each database module provides methods for:
 
 1. The user provides input data in the form of a JSON file or DNS zone file.
 2. The Input Module validates the input data and converts it to the required format.
-3. The user selects one or more cloud platforms to use for scanning.
-4. The Cloud Modules prepare scan jobs and distribute them to serverless functions.
-5. The Scan Modules execute the scan jobs with appropriate rate limiting.
-6. The results are collected and stored in the selected cloud platform's database.
-7. The user can query the results using the provided database interfaces.
+3. The IP Intelligence Module enriches the targets with organization information.
+4. The user selects one or more cloud platforms to use for scanning.
+5. The Cloud Modules prepare scan jobs and distribute them to serverless functions.
+6. The Scan Modules execute the scan jobs with appropriate rate limiting.
+7. The results are collected and enriched with organization information.
+8. The enriched results are stored in the selected cloud platform's database.
+9. The user can query the results using the provided database interfaces.
 
 ## Security Considerations
 
@@ -109,3 +127,4 @@ The modular design of the platform allows for easy extension:
 - **Additional Cloud Providers**: New cloud providers can be added by implementing the required modules.
 - **Additional Input Formats**: New input formats can be added by implementing the required parsers.
 - **Additional Database Backends**: New database backends can be added by implementing the required storage handlers.
+- **Additional IP Intelligence Sources**: New sources for IP organization information can be added by extending the IP Intelligence Module.

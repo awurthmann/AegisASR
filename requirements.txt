@@ -26,3 +26,7 @@ google-auth>=2.3.0
 # Utility dependencies
 requests>=2.26.0
 dnspython>=2.1.0
+
+# IP Intelligence dependencies
+geoip2>=4.6.0
+ipwhois>=1.2.0

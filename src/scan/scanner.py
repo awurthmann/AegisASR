@@ -164,10 +164,16 @@ def format_results_for_storage(results: List[Dict[str, Any]]) -> Dict[str, Dict[
         timestamp = result["timestamp"]
         
         if ip not in formatted:
-            formatted[ip] = {
+            formatted_ip = {
                 "scan_time": timestamp,
                 "ports": {}
             }
+            
+            # Add organization information if available
+            if "organization" in result:
+                formatted_ip["organization"] = result["organization"]
+            
+            formatted[ip] = formatted_ip
         
         formatted[ip]["ports"][str(port)] = is_open
     

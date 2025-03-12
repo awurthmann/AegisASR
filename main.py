@@ -19,13 +19,14 @@ import os
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 
-from src.config import load_config, validate_config
+from src.config import load_config, validate_config, get_ip_intel_config
 from src.input.json_handler import load_json_targets, validate_json_format
 from src.input.dns_handler import load_dns_zone, convert_dns_to_json
 from src.cloud.common import select_cloud_platforms
 from src.scan.scanner import prepare_scan_jobs
 from src.scan.rate_limiter import calculate_concurrency_limit
 from src.utils import setup_logging, display_progress, display_warning
+from src.intel import enrich_targets_with_organization, format_results_with_organization
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -57,6 +58,21 @@ def parse_arguments() -> argparse.Namespace:
         "--ports", "-p", 
         type=str, 
         help="Comma-separated list of TCP ports to scan (for DNS input only)"
+    )
+    parser.add_argument(
+        "--maxmind-db", "-m",
+        type=str,
+        help="Path to MaxMind GeoLite2-ASN database (overrides config file)"
+    )
+    parser.add_argument(
+        "--ipinfo-token", "-t",
+        type=str,
+        help="Token for ipinfo.io API (overrides config file)"
+    )
+    parser.add_argument(
+        "--no-ip-intel",
+        action="store_true",
+        help="Disable IP intelligence enrichment"
     )
     parser.add_argument(
         "--verbose", "-v", 
@@ -133,6 +149,34 @@ def main() -> int:
         concurrency_limit = calculate_concurrency_limit(target_count)
         logger.info(f"Target count: {target_count}, Concurrency limit: {concurrency_limit}")
         
+        # Enrich targets with organization information if not disabled
+        if not args.no_ip_intel:
+            # Get IP intelligence configuration
+            ip_intel_config = get_ip_intel_config(config)
+            
+            # Override with command line arguments if provided
+            if args.maxmind_db:
+                ip_intel_config["MAXMIND_DB_PATH"] = args.maxmind_db
+            if args.ipinfo_token:
+                ip_intel_config["IPINFO_TOKEN"] = args.ipinfo_token
+            
+            # Check if MaxMind database exists
+            maxmind_db_path = ip_intel_config.get("MAXMIND_DB_PATH")
+            if maxmind_db_path and os.path.exists(maxmind_db_path):
+                logger.info(f"Using MaxMind GeoLite2-ASN database: {maxmind_db_path}")
+            else:
+                if maxmind_db_path:
+                    logger.warning(f"MaxMind database not found at: {maxmind_db_path}")
+                logger.info("Falling back to alternative IP intelligence sources")
+            
+            # Enrich targets with organization information
+            logger.info("Enriching targets with organization information")
+            targets = enrich_targets_with_organization(
+                targets,
+                maxmind_db_path=ip_intel_config.get("MAXMIND_DB_PATH"),
+                ipinfo_token=ip_intel_config.get("IPINFO_TOKEN")
+            )
+        
         # Display warning and get confirmation
         if not args.dry_run:
             if not display_warning():
@@ -206,6 +250,11 @@ def main() -> int:
             logger.info(f"Executing scan jobs on {platform.upper()}")
             results = handler.execute_scan_jobs(scan_jobs, concurrency_limit)
             all_results.extend(results)
+        
+        # Add organization information to results if IP intelligence is enabled
+        if not args.no_ip_intel:
+            logger.info("Adding organization information to scan results")
+            all_results = format_results_with_organization(all_results, targets)
         
         # Store results in the selected platform
         storage_handler = handlers[storage_platform]
